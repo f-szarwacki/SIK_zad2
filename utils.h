@@ -46,8 +46,8 @@
 #define STATUS_COUNT 7
 
 #define STRAIGHT 0
-#define LEFT 1
-#define RIGHT 2
+#define RIGHT 1
+#define LEFT 2
 
 #include "crc_table.h"
 

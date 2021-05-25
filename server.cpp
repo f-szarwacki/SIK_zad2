@@ -350,10 +350,10 @@ void Server::play_round() {
     for (auto it = players.begin(); it != players.end(); ++it) {
         if (it->status == PLAYING || it->status == ZOMBIE) {
             // turn
-            if (it->turn_direction == 1) {
+            if (it->turn_direction == RIGHT) {
                 it->direction += turning_speed;
                 if (it->direction >= 360) it->direction -= 360;
-            } else if (it->turn_direction == 2) {
+            } else if (it->turn_direction == LEFT) {
                 it->direction -= turning_speed;
                 if (it->direction < 360) it->direction += 360;
             }
@@ -363,7 +363,7 @@ void Server::play_round() {
             int old_pixel_y = ceil(it->y);
 
             it->x += cos((double) it->direction * DEGREES_TO_RADIANS);
-            it->y += (-1) * sin((double) it->direction * DEGREES_TO_RADIANS);
+            it->y += sin((double) it->direction * DEGREES_TO_RADIANS);
 
             int pixel_x = ceil(it->x);
             int pixel_y = ceil(it->y);
@@ -373,7 +373,7 @@ void Server::play_round() {
                 continue;
             }
 
-            if ((pixel_x < 0 || pixel_x >= width) || (pixel_y < 0 || pixel_y >= height) || get_board(pixel_x, pixel_y) == EATEN) {
+            if ((pixel_x < 0 || pixel_x >= (int64_t)width) || (pixel_y < 0 || pixel_y >= (int64_t)height) || get_board(pixel_x, pixel_y) == EATEN) {
                 // player failed and got eliminated :(
                 eliminate_player(it);
                 if (num_of_players_with_status[PLAYING] + num_of_players_with_status[ZOMBIE] < 2) {
