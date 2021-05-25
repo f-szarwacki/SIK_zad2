@@ -59,7 +59,7 @@ struct Player {
     uint direction;
     int turn_direction;
     std::string name;
-    struct sockaddr address;
+    struct sockaddr_in6 address;
     uint poll_arr_index;
     uint status;
 };

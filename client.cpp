@@ -102,20 +102,20 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     struct addrinfo addr_hints, *addr_result;
 
     // UDP communication with game server
-    server_socket = socket(PF_INET, SOCK_DGRAM, 0);
+    server_socket = socket(AF_INET6, SOCK_DGRAM, 0);
     if (server_socket < 0) {
         error("Socket making.", CRITICAL);
     }
 
     memset(&addr_hints, 0, sizeof(struct addrinfo));
     addr_hints.ai_flags = 0;
-    addr_hints.ai_family = AF_INET;
+    addr_hints.ai_family = AF_INET6;
     addr_hints.ai_socktype = SOCK_DGRAM;
     addr_hints.ai_protocol = 0;
 
     rc =  getaddrinfo(game_server.c_str(), server_port.c_str(), &addr_hints, &addr_result);
     if (rc != 0) {
-        error("Get address info.", CRITICAL);
+        error(gai_strerror(rc), CRITICAL);
     }
 
     if(fcntl(server_socket, F_SETFL, fcntl(server_socket, F_GETFL) | O_NONBLOCK) < 0) {
@@ -129,14 +129,14 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     server_socket_poll_ind = add_to_poll(server_socket);
 
     // TCP connection with GUI server
-    gui_server_socket = socket(PF_INET, SOCK_STREAM, 0);
+    gui_server_socket = socket(AF_INET6, SOCK_STREAM, 0);
     if (gui_server_socket < 0) {
         error("Socket making.", CRITICAL);
     }
 
     memset(&addr_hints, 0, sizeof(struct addrinfo));
     addr_hints.ai_flags = 0;
-    addr_hints.ai_family = AF_INET;
+    addr_hints.ai_family = AF_INET6;
     addr_hints.ai_socktype = SOCK_STREAM;
     addr_hints.ai_protocol = 0;
 
@@ -326,7 +326,6 @@ void Client::interpret_message_from_server(uint message_len) {
 
             uint bytes_written_to_gui_buffer = 0;
             if (event_type == NEW_GAME_TYPE) {
-
                 player_names.clear();
                 current_game_id = game_id;
 
