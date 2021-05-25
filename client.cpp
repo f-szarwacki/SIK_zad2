@@ -109,7 +109,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
 
     memset(&addr_hints, 0, sizeof(struct addrinfo));
     addr_hints.ai_flags = 0;
-    addr_hints.ai_family = AF_INET6;
+    addr_hints.ai_family = AF_UNSPEC;
     addr_hints.ai_socktype = SOCK_DGRAM;
     addr_hints.ai_protocol = 0;
 
@@ -158,7 +158,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     setsockopt(gui_server_socket, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
 
     if (connect(gui_server_socket, addr_result->ai_addr, addr_result->ai_addrlen) != 0) {
-        perror("connect: ");
+        perror("connect");
         error("Connect.", CRITICAL);
     }
 
@@ -332,7 +332,7 @@ void Client::interpret_message_from_server(uint message_len) {
 
             uint bytes_written_to_gui_buffer = 0;
             if (event_type == NEW_GAME_TYPE) {
-                printf("new game\n");
+                //printf("new game\n");
                 player_names.clear();
                 current_game_id = game_id;
 

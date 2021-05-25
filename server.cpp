@@ -38,7 +38,7 @@ MessageFromClient parse_message_from_client(char *buffer, uint len) {
     return_value.next_expected_event_no = be32toh(*((uint32_t*)buffer));
     buffer += sizeof(uint32_t);
     strncpy(return_value.player_name, (char*) buffer, len - (sizeof(uint64_t) + sizeof(uint8_t) + sizeof(uint32_t)));
-    printf("turn: %u; event_no: %u; name: %s;\n", return_value.turn_direction, return_value.next_expected_event_no, return_value.player_name);
+    //printf("turn: %u; event_no: %u; name: %s;\n", return_value.turn_direction, return_value.next_expected_event_no, return_value.player_name);
     return return_value;
 }
 
@@ -120,7 +120,7 @@ class Server {
 
     bool get_board(uint32_t x, uint32_t y);
     void set_board(uint32_t x, uint32_t y, bool value);
-    void react_to_message_from_client(MessageFromClient message, sockaddr_in6 client_address);
+    void react_to_message_from_client(MessageFromClient message, struct sockaddr *client_address, socklen_t addrlen);
     int add_timer_to_poll(uint milliseconds);
     int add_to_poll(int fd, int events = POLLIN);
     void play_round();
@@ -231,12 +231,12 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
                     if (i == socket_poll_ind) {
                         // new message at socket
                         struct sockaddr_in6 client;
-                        socklen_t client_len = sizeof(struct sockaddr);
+                        socklen_t client_len = sizeof(struct sockaddr_in6);
                         while ((rc = recvfrom(poll_arr[i].fd, buffer, BUFFER_SIZE, 0, (struct sockaddr*)&client, &client_len)) > 0) {
                             // parse message from client
                             MessageFromClient mess = parse_message_from_client(buffer, rc);
                             // react to message from client
-                            react_to_message_from_client(mess, client);
+                            react_to_message_from_client(mess, (struct sockaddr*)&client, client_len);
                         }
                     } else if (i == round_timer_poll_ind) {
                         // new round to be played
@@ -289,7 +289,8 @@ void Server::set_board(uint32_t x, uint32_t y, bool value) {
     }
 }
 
-void Server::react_to_message_from_client(MessageFromClient message, sockaddr_in6 client_address) {
+void
+Server::react_to_message_from_client(MessageFromClient message, struct sockaddr *client_address, socklen_t addrlen) {
     bool is_new_player = true;
     uint player_no;
     for (uint i = 0; i < players.size(); ++i) { //TODO change to it
@@ -328,7 +329,8 @@ void Server::react_to_message_from_client(MessageFromClient message, sockaddr_in
             num_of_players_with_status[WILLING_TO_PLAY]++;
         }
 
-        player.address = client_address;
+        player.address = *(sockaddr_in6*)client_address;
+        player.addrlen = addrlen;
         player.turn_direction = message.turn_direction;
 
         player.poll_arr_index = add_timer_to_poll(PLAYER_TIMEOUT_MILLISECONDS);
@@ -405,21 +407,20 @@ void Server::send_events(uint event_no, uint to_whom) {
         if (to_whom == ALL) {
             for (auto player : players) {
                 if (!(player.status == DISCONNECTED || player.status == ZOMBIE)) {
-                    rc = sendto(ear, buffer, total_events_size_in_batch, 0, (struct sockaddr*) &player.address, sizeof(player.address));
+                    rc = sendto(ear, buffer, total_events_size_in_batch, 0, (struct sockaddr*) &player.address, player.addrlen);
                     if (rc < 0) {
-                        error("send to", NONCRITICAL);
+                        error(strerror(errno), NONCRITICAL);
                     }
-                    printf("sendto\n");
                 }
             }
         } else {
             auto player = players[to_whom];
             if (!(player.status == DISCONNECTED || player.status == ZOMBIE)) {
-                rc = sendto(ear, buffer, total_events_size_in_batch, 0, (struct sockaddr*) &player.address, sizeof(player.address));
+                rc = sendto(ear, buffer, total_events_size_in_batch, 0, (struct sockaddr*) &player.address, player.addrlen);
                 if (rc < 0) {
-                    error("send to", NONCRITICAL);
+                    error(strerror(errno), NONCRITICAL);
                 }
-                printf("sendto\n");
+
             }
         }
 
@@ -528,7 +529,7 @@ void Server::game_over() {
 }
 
 void Server::new_game() {
-    printf("new_game\n");
+    //printf("new_game\n");
     is_game_active = true;
     for (uint i = 0; i < width * height; ++i) {
         game_board[i] = NOT_EATEN;

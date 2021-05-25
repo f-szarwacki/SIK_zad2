@@ -60,6 +60,7 @@ struct Player {
     int turn_direction;
     std::string name;
     struct sockaddr_in6 address;
+    socklen_t addrlen;
     uint poll_arr_index;
     uint status;
 };
