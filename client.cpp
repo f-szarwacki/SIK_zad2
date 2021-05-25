@@ -122,6 +122,9 @@ Client::Client(std::string game_server, std::string player_name, std::string por
         error("Setting up socket.", CRITICAL);
     }
 
+    int v = 0;
+    setsockopt(server_socket, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
+
     if (connect(server_socket, addr_result->ai_addr, addr_result->ai_addrlen) != 0) {
         error("Connect.", CRITICAL);
     }
@@ -150,6 +153,9 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     if (rc < 0) {
         error("Setting socket options.", CRITICAL);
     }
+
+    v = 0;
+    setsockopt(gui_server_socket, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
 
     if (connect(gui_server_socket, addr_result->ai_addr, addr_result->ai_addrlen) != 0) {
         perror("connect: ");

@@ -210,6 +210,9 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
         error("Setting up socket.", CRITICAL);
     }
 
+    int v = 0;
+    setsockopt(ear, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
+
     socket_poll_ind = add_to_poll(ear);
 
     while(true) {
