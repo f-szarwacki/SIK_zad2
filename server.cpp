@@ -7,9 +7,11 @@
 #include <sys/timerfd.h>
 #include <cmath>
 #include <cstring>
+#include <string>
 #include <vector>
 #include <memory>
 #include <cstdlib>
+#include <algorithm>
 
 #include "utils.h"
 
@@ -62,7 +64,7 @@ public:
                 player_names[i][j] = 0;
             }
         }
-        for (int i = 0; i < players.size(); ++i) {
+        for (uint i = 0; i < players.size(); ++i) {
             auto player_name_len = players[i].name.size();
             if (players[i].status == WILLING_TO_PLAY) {
                 strncpy(player_names[i], players[i].name.c_str(), player_name_len);
@@ -167,7 +169,7 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
         error("Allocation", CRITICAL);
     }
 
-    for (int i = 0; i < height * width; ++i) {
+    for (uint i = 0; i < height * width; ++i) {
         game_board[i] = NOT_EATEN;
     }
 
@@ -223,7 +225,7 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
         }
 
         if (rc > 0) {
-            for (int i = 0; i < POLL_ARR_LEN; ++i) {
+            for (uint i = 0; i < POLL_ARR_LEN; ++i) {
                 if (poll_arr[i].revents != 0) {
                     if (i == socket_poll_ind) {
                         // new message at socket
@@ -533,7 +535,7 @@ void Server::new_game() {
     counter++;
 
     is_game_active = true;
-    for (int i = 0; i < width * height; ++i) {
+    for (uint i = 0; i < width * height; ++i) {
         game_board[i] = NOT_EATEN;
     }
 

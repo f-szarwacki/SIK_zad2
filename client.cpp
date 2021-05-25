@@ -177,7 +177,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
         }
 
         if (rc > 0) {
-            for (int i = 0; i < POLL_ARR_LEN_CLIENT; ++i) {
+            for (uint i = 0; i < POLL_ARR_LEN_CLIENT; ++i) {
                 if (poll_arr[i].revents != 0) {
                     if (i == server_socket_poll_ind) {
                         rc = recv(server_socket, buffer, BUFFER_SIZE, 0);
@@ -347,7 +347,7 @@ void Client::interpret_message_from_server(uint message_len) {
                 } while (player_names_bytes_read < (len - NEW_GAME_BASE_LEN));
 
                 bytes_written_to_gui_buffer += sprintf(gui_buffer, "NEW_GAME %u %u", maxx, maxy);
-                for (int i = 0; i < player_names.size(); ++i) {
+                for (uint i = 0; i < player_names.size(); ++i) {
                     bytes_written_to_gui_buffer += sprintf(gui_buffer + bytes_written_to_gui_buffer, " %s",
                                                            player_names[i].c_str());
                 }

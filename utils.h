@@ -1,5 +1,7 @@
 #ifndef SIKDUZE_UTILS_H
 #define SIKDUZE_UTILS_H
+#include <cstdint>
+#include <string>
 
 #define CRITICAL true
 #define NONCRITICAL false
@@ -72,7 +74,7 @@ void error(const std::string& log, bool critical) {
 uint32_t crc32(uint8_t *data, uint len_of_data) {
     uint32_t crc = 0xFFFFFFFF;
     uint32_t lookup_ind = 0;
-    for (int i = 0; i < len_of_data; ++i) {
+    for (uint i = 0; i < len_of_data; ++i) {
         lookup_ind = (crc ^ data[i]) & 0xFF;
         crc = (crc >> 8) ^ crc_table[lookup_ind];
     }

@@ -1,14 +1,14 @@
 .PHONY: all clean
 
 CC = g++
-CFLAGS = -Wall -Wextra
+CFLAGS = -std=c++17 -Wall -Wextra
 
 all: screen-worms-server screen-worms-client
 
-screen-worms-server: server.cpp utils.h crc_table.h
+screen-worms-server: server.cpp
 	$(CC) $(CFLAGS) -o $@ $^
 
-screen-worms-client: client.cpp utils.h crc_table.h
+screen-worms-client: client.cpp
 	$(CC) $(CFLAGS) -o $@ $^
 
 clean:
