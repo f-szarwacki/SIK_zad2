@@ -418,10 +418,6 @@ void Server::send_events(uint event_no, uint to_whom) {
             }
         }
 
-        if (events[event_no - 1]->event_type == GAME_OVER_TYPE) {
-            events.clear();
-            next_event_no_to_be_sent = 0;
-        }
     }
 }
 
@@ -523,6 +519,9 @@ void Server::game_over() {
 }
 
 void Server::new_game() {
+    events.clear();
+    next_event_no_to_be_sent = 0;
+
     is_game_active = true;
     for (uint i = 0; i < width * height; ++i) {
         game_board[i] = NOT_EATEN;
