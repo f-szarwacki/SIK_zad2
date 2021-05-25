@@ -25,8 +25,6 @@
 #define RIGHT_KEY_DOWN_LEN 15
 #define RIGHT_KEY_UP_LEN 13
 
-uint32_t COUNTER = 0;
-
 uint send_to_socket(int socket, char *buffer, uint buffer_size, int flags) {
     uint bytes_sent = 0;
     int rc;
@@ -198,7 +196,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
                         read(poll_arr[timer_poll_ind].fd, buffer, BUFFER_SIZE);
                         uint len = prepare_message_to_server(buffer);
                         rc = send(server_socket, buffer, len, 0);
-                        /*printf("%u: turn: %u, event_no: %u;\n",COUNTER++, turn_direction, next_expected_event_no);*/
+
                         if (rc < 0) {
                             error("Sending to server.", NONCRITICAL);
                         }

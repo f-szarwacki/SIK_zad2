@@ -15,8 +15,6 @@
 
 #include "utils.h"
 
-uint32_t COUNTER = 0; //todo debug
-
 void reset_timer(uint fd, uint milliseconds) {
     struct timespec time_spec {milliseconds / MILLISECONDS_IN_SECOND, (milliseconds %
                                                                        MILLISECONDS_IN_SECOND) * NANOSECONDS_IN_MILLISECOND};
@@ -229,7 +227,6 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
                 if (poll_arr[i].revents != 0) {
                     if (i == socket_poll_ind) {
                         // new message at socket
-                        //printf("Message from client.\n");
                         struct sockaddr client;
                         socklen_t client_len = sizeof(struct sockaddr);
                         while ((rc = recvfrom(poll_arr[i].fd, buffer, BUFFER_SIZE, 0, &client, &client_len)) > 0) {
@@ -240,10 +237,6 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
                         }
                     } else if (i == round_timer_poll_ind) {
                         // new round to be played
-                        /*printf("%u: waiting: %u; willingToPlay: %u; playin: %u; elim: %u; zombie: %u, observer: %u, disconn: %u;\n",COUNTER++, num_of_players_with_status[WAITING],
-                              num_of_players_with_status[WILLING_TO_PLAY], num_of_players_with_status[PLAYING], num_of_players_with_status[ELIMINATED],
-                              num_of_players_with_status[ZOMBIE], num_of_players_with_status[OBSERVER], num_of_players_with_status[DISCONNECTED]); //todo debug
-*/
                         read(poll_arr[i].fd, buffer, BUFFER_SIZE);
 
                         if (is_game_active) {
@@ -486,20 +479,12 @@ char *Server::put_event_to_buffer(const std::shared_ptr<Event>& event_ptr, char 
 }
 
 void Server::eliminate_player(std::vector<Player>::iterator it) {
-    /*static int counter = 0;
-    counter++;
-    if (counter >= 2) {
-        counter +=2137;
-    }*/
     if (it->status == PLAYING) {
         change_status(it, ELIMINATED);
     } else if (it->status == ZOMBIE){
         change_status(it, DISCONNECTED);
-    } else {
-        error("THIS SHOULDN'T HAPPEN!", NONCRITICAL);
     }
 
-    printf("player_no: %ld\n", std::distance(players.begin(), it));
     events.push_back(std::make_shared<PlayerEliminatedEvent>(std::distance(players.begin(), it), events.size()));
 }
 
@@ -531,9 +516,6 @@ void Server::game_over() {
 }
 
 void Server::new_game() {
-    static int counter = 0;
-    counter++;
-
     is_game_active = true;
     for (uint i = 0; i < width * height; ++i) {
         game_board[i] = NOT_EATEN;
@@ -557,10 +539,6 @@ void Server::new_game() {
     });
 
     game_id = rand();
-
-    if (counter == 2) {
-        counter = 10000;
-    }
 
     events.push_back(std::make_shared<NewGameEvent>(maxx, maxy, players, events.size()));
 
