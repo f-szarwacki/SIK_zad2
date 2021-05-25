@@ -406,23 +406,47 @@ int main(int argc, char *argv[]){
     game_server = std::string(argv[1]);
 
     int c;
-    while ((c = getopt (argc, argv, "n:p:i:r:")) != -1)
-        switch (c) {
-            case 'n':
-                player_name = std::string(optarg);
-                break;
-            case 'p':
-                port_number = std::string(optarg);
-                break;
-            case 'i':
-                gui_server = std::string(optarg);
-                break;
-            case 'r':
-                gui_port_number = std::string(optarg);
-                break;
-            default:
-                break;
-        }
+    try {
+        while ((c = getopt(argc, argv, "n:p:i:r:")) != -1)
+            switch (c) {
+                case 'n':
+                    player_name = std::string(optarg);
+                    if (player_name.size() > MAX_PLAYER_NAME_LEN) {
+                        error("Player name too long.", CRITICAL);
+                    }
+                    for (uint i = 0; i < player_name.size(); ++i) {
+                        if (player_name[i] < 33 || player_name[i] > 126) {
+                            error("Incorrect character in player name.", CRITICAL);
+                        }
+                            //todo constants
+                    }
+                    break;
+                case 'p':
+                    port_number = std::string(optarg);
+                    if (stoul(port_number) < 1 || stoul(port_number) > 65535) {
+                        error("Incorrect port number.", CRITICAL);
+                    }
+                    break;
+                case 'i':
+                    gui_server = std::string(optarg);
+                    break;
+                case 'r':
+                    gui_port_number = std::string(optarg);
+                    if (stoul(gui_port_number) < 1 || stoul(gui_port_number) > 65535) {
+                        error("Incorrect GUI port number.", CRITICAL);
+                    }
+                    break;
+                default:
+                    error("Unexpected argument.", CRITICAL);
+                    break;
+            }
+    } catch (...) {
+        error("Incorrect arguments.", CRITICAL);
+    }
+
+    if (argc - optind != 1) {
+        error("Unexpected arguments.", CRITICAL);
+    }
 
     Client client(game_server, player_name, port_number, gui_server, gui_port_number);
     client.run();

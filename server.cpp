@@ -598,29 +598,63 @@ int main(int argc, char *argv[]) {
     uint32_t port_number = 2021, seed = time(nullptr), turning_speed = 6, rounds_per_sec = 50;
     uint32_t width = 640, height = 480;
 
+    int64_t seed_as_signed;
+
     int c;
-    while ((c = getopt(argc, argv, "p:s:t:v:w:h:")) != -1)
-        switch (c) {
-        case 'p':
-            port_number = std::stoul(optarg);
-            break;
-        case 's':
-            seed = std::stoul(optarg);
-            break;
-        case 't':
-            turning_speed = std::stoul(optarg);
-            break;
-        case 'v':
-            rounds_per_sec = std::stoul(optarg);
-            break;
-        case 'w':
-            width = std::stoul(optarg);
-            break;
-        case 'h':
-            height = std::stoul(optarg);
-            break;
-        default:
-            break;
+    try {
+        while ((c = getopt(argc, argv, "p:s:t:v:w:h:")) != -1) {
+            if (std::string(optarg).find_first_not_of( "0123456789" ) != std::string::npos) {
+                error("Incorrect character in argument.", CRITICAL);
+            }
+            switch (c) {
+                case 'p':
+                    port_number = std::stoul(optarg);
+                    if (port_number < 1 || port_number > 65535) {
+                        error("Incorrect port number.", CRITICAL);
+                    }
+                    break;
+                case 's':
+                    seed_as_signed = std::stoll(optarg);
+                    if (seed_as_signed < 0 || seed_as_signed > UINT32_MAX) {
+                        error("Seed not in accepted interval.", CRITICAL);
+                    }
+                    seed = (uint32_t) seed_as_signed;
+                    break;
+                case 't':
+                    turning_speed = std::stoul(optarg);
+                    if (turning_speed < 1 || turning_speed > 90) {
+                        error("Incorrect turning speed.", CRITICAL);
+                    }
+                    break;
+                case 'v':
+                    rounds_per_sec = std::stoul(optarg);
+                    if (rounds_per_sec < 1 || rounds_per_sec > 250) {
+                        error("Incorrect rounds per sec.", CRITICAL);
+                    }
+                    break;
+                case 'w':
+                    width = std::stoul(optarg);
+                    if (width < 10 || width > 4096) {
+                        error("Incorrect width.", CRITICAL);
+                    }
+                    break;
+                case 'h':
+                    height = std::stoul(optarg);
+                    if (height < 10 || height > 4096) {
+                        error("Incorrect height.", CRITICAL);
+                    }
+                    break;
+                default:
+                    error("Unexpected argument.", CRITICAL);
+                    break;
+            }
+        }
+    } catch (...) {
+        error("Invalid argument.", CRITICAL);
+    }
+
+    if (argc - optind != 0) {
+        error("Unexpected argument.", CRITICAL);
     }
 
     Server server(port_number, seed, turning_speed, rounds_per_sec, width, height);
@@ -632,7 +666,7 @@ int main(int argc, char *argv[]) {
 /**
 TODO:
  [*] keep players sorted alphabetically
- [ ] IPv6
+ [*] IPv6
  [ ] recognition by socket, not name
  [*] disconnecting does not ruin everything
  [ ] errors handling
