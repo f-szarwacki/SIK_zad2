@@ -38,7 +38,7 @@ MessageFromClient parse_message_from_client(char *buffer, uint len) {
     return_value.next_expected_event_no = be32toh(*((uint32_t*)buffer));
     buffer += sizeof(uint32_t);
     strncpy(return_value.player_name, (char*) buffer, len - (sizeof(uint64_t) + sizeof(uint8_t) + sizeof(uint32_t)));
-    //printf("turn: %u; event_no: %u; name: %s;\n", return_value.turn_direction, return_value.next_expected_event_no, return_value.player_name);
+    printf("turn: %u; event_no: %u; name: %s;\n", return_value.turn_direction, return_value.next_expected_event_no, return_value.player_name);
     return return_value;
 }
 
@@ -406,6 +406,7 @@ void Server::send_events(uint event_no, uint to_whom) {
                     if (rc < 0) {
                         error("send to", NONCRITICAL);
                     }
+                    printf("sendto\n");
                 }
             }
         } else {
@@ -415,9 +416,14 @@ void Server::send_events(uint event_no, uint to_whom) {
                 if (rc < 0) {
                     error("send to", NONCRITICAL);
                 }
+                printf("sendto\n");
             }
         }
 
+        if (events[event_no - 1]->event_type == GAME_OVER_TYPE) {
+            events.clear();
+            next_event_no_to_be_sent = 0;
+        }
     }
 }
 
@@ -519,9 +525,7 @@ void Server::game_over() {
 }
 
 void Server::new_game() {
-    events.clear();
-    next_event_no_to_be_sent = 0;
-
+    printf("new_game\n");
     is_game_active = true;
     for (uint i = 0; i < width * height; ++i) {
         game_board[i] = NOT_EATEN;

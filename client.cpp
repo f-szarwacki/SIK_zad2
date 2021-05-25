@@ -326,6 +326,7 @@ void Client::interpret_message_from_server(uint message_len) {
 
             uint bytes_written_to_gui_buffer = 0;
             if (event_type == NEW_GAME_TYPE) {
+                printf("new game\n");
                 player_names.clear();
                 current_game_id = game_id;
 
