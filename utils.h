@@ -49,6 +49,9 @@
 #define RIGHT 1
 #define LEFT 2
 
+#define MIN_PLAYER_NAME_CHAR 33
+#define MAX_PLAYER_NAME_CHAR 126
+
 #include "crc_table.h"
 
 typedef unsigned int uint;
@@ -63,6 +66,7 @@ struct Player {
     socklen_t addrlen;
     uint poll_arr_index;
     uint status;
+    uint64_t session_id;
 };
 
 void error(const std::string& log, bool critical) {

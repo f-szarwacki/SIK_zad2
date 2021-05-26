@@ -15,6 +15,25 @@
 
 #include "utils.h"
 
+bool check_if_sockets_equal(struct sockaddr *addr1, socklen_t addrlen1, struct sockaddr *addr2, socklen_t addrlen2) {
+    if (addrlen1 == addrlen2 && addr1->sa_family == addr2->sa_family) {
+        if (addr1->sa_family == AF_INET && memcmp(&(((struct sockaddr_in*)addr1)->sin_addr),
+                &(((struct sockaddr_in*)addr2)->sin_addr),sizeof(struct in_addr)) == 0 &&
+                (((struct sockaddr_in*)addr1)->sin_port == ((struct sockaddr_in*)addr2)->sin_port)) {
+            //IPv4 sockets are equal
+            return true;
+        }
+
+        if (addr1->sa_family == AF_INET6 && memcmp(&(((struct sockaddr_in6*)addr1)->sin6_addr),
+                                                  &(((struct sockaddr_in6*)addr2)->sin6_addr),sizeof(struct in6_addr)) == 0 &&
+            (((struct sockaddr_in6*)addr1)->sin6_port == ((struct sockaddr_in6*)addr2)->sin6_port)) {
+            //IPv6 sockets are equal
+            return true;
+        }
+    }
+    return false;
+}
+
 void reset_timer(uint fd, uint milliseconds) {
     struct timespec time_spec {milliseconds / MILLISECONDS_IN_SECOND, (milliseconds %
                                                                        MILLISECONDS_IN_SECOND) * NANOSECONDS_IN_MILLISECOND};
@@ -26,7 +45,7 @@ struct MessageFromClient {
     uint64_t session_id;
     uint8_t turn_direction;
     uint32_t next_expected_event_no;
-    char player_name[MAX_PLAYER_NAME_LEN];
+    char player_name[MAX_PLAYER_NAME_LEN + 1];
 };
 
 MessageFromClient parse_message_from_client(char *buffer, uint len) {
@@ -38,6 +57,7 @@ MessageFromClient parse_message_from_client(char *buffer, uint len) {
     return_value.next_expected_event_no = be32toh(*((uint32_t*)buffer));
     buffer += sizeof(uint32_t);
     strncpy(return_value.player_name, (char*) buffer, len - (sizeof(uint64_t) + sizeof(uint8_t) + sizeof(uint32_t)));
+    return_value.player_name[len - (sizeof(uint64_t) + sizeof(uint8_t) + sizeof(uint32_t))] = 0;
     //printf("turn: %u; event_no: %u; name: %s;\n", return_value.turn_direction, return_value.next_expected_event_no, return_value.player_name);
     return return_value;
 }
@@ -132,6 +152,7 @@ class Server {
     void game_over();
     void delete_player(std::vector<Player>::iterator it);
     void change_status(std::vector<Player>::iterator it, uint new_status);
+    void disconnect_player(std::vector<Player>::iterator it);
 public:
     Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint32_t rounds_per_sec,
            uint32_t width, uint32_t height);
@@ -199,7 +220,7 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
     struct sockaddr_in6 server;
 
     // binding the socket
-    server.sin6_family = AF_INET6; //todo change to IPv6
+    server.sin6_family = AF_INET6;
     server.sin6_addr = in6addr_any;
     server.sin6_port = htobe16(port_number);     // using port number given as parameter
     rc = bind(ear, (struct sockaddr *)&server, sizeof(server));
@@ -222,7 +243,7 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
 
         rc = poll(poll_arr, POLL_ARR_LEN, POLL_TIMEOUT);
         if (rc < 0) {
-            error("Poll error.", NONCRITICAL); //todo what kind of errors can occur here? critical?
+            error("Poll error.", NONCRITICAL);
         }
 
         if (rc > 0) {
@@ -252,15 +273,7 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
                         read(poll_arr[i].fd, buffer, BUFFER_SIZE);
                         for (auto it = players.begin(); it != players.end(); ++it) {
                             if (it->poll_arr_index == i) {
-                                if (it->status == PLAYING) {
-                                    // change to ZOMBIE
-                                    change_status(it, ZOMBIE);
-                                } else {
-                                    change_status(it, DISCONNECTED);
-                                    if (!is_game_active) {
-                                        delete_player(it);
-                                    }
-                                }
+                                disconnect_player(it);
                                 break; // at most one player has this poll_arr_index
                             }
                         }
@@ -289,35 +302,69 @@ void Server::set_board(uint32_t x, uint32_t y, bool value) {
     }
 }
 
-void
-Server::react_to_message_from_client(MessageFromClient message, struct sockaddr *client_address, socklen_t addrlen) {
+void Server::react_to_message_from_client(MessageFromClient message, struct sockaddr *client_address, socklen_t addrlen) {
+    for (int i = 0; i < MAX_PLAYER_NAME_LEN; ++i) {
+        if (message.player_name[i] == 0) {
+            break;
+        }
+        if (message.player_name[i] < MIN_PLAYER_NAME_CHAR || message.player_name[i] > MAX_PLAYER_NAME_CHAR) {
+            // Incorrect name - ignore.
+            return;
+        }
+    }
     bool is_new_player = true;
-    uint player_no;
-    for (uint i = 0; i < players.size(); ++i) { //TODO change to it
-        if (strncmp(players[i].name.c_str(), message.player_name, MAX_PLAYER_NAME_LEN) == 0 && !(players[i].status == DISCONNECTED || players[i].status == ZOMBIE)) {
-            is_new_player = false;
-            Player& player = players[i]; // todo maybe bad!!!!
-            player_no = i;
-            // todo check if socket is OK!!!!! struct sockaddr
-            player.turn_direction = message.turn_direction;
-            reset_timer(poll_arr[player.poll_arr_index].fd, PLAYER_TIMEOUT_MILLISECONDS);
+    uint player_no = 0;
+    for (auto it = players.begin(); it != players.end(); ++it) {
+        if (it->status != DISCONNECTED && it->status != ZOMBIE) {
+            if (check_if_sockets_equal(client_address, addrlen, (struct sockaddr *) (&it->address), it->addrlen)) {
+                if (message.session_id == it->session_id) {
+                    // Same player.
+                    if (strncmp(it->name.c_str(), message.player_name, it->name.size()) == 0) {
+                        // Same name.
+                        is_new_player = false;
+                        if (message.turn_direction > LEFT) { // Incorrect turn_direction - ignore.
+                            return;
+                        }
+                        it->turn_direction = message.turn_direction;
+                        reset_timer(poll_arr[it->poll_arr_index].fd, PLAYER_TIMEOUT_MILLISECONDS);
 
-            if (player.status == WAITING && message.turn_direction != STRAIGHT) {
-                num_of_players_with_status[player.status]--;
-                player.status = WILLING_TO_PLAY;
-                num_of_players_with_status[player.status]++; //TODO change to it
-                if (num_of_players_with_status[WILLING_TO_PLAY] >= 2 && num_of_players_with_status[WAITING] == 0) {
-                    // new game can start
-                    new_game();
+                        if (it->status == WAITING && message.turn_direction != STRAIGHT) {
+                            change_status(it, WILLING_TO_PLAY);
+                            if (num_of_players_with_status[WILLING_TO_PLAY] >= 2 && num_of_players_with_status[WAITING] == 0) {
+                                // new game can start
+                                new_game();
+                            }
+                        }
+                        break; // At most one player can match.
+                    } else {
+                        // Different name - ignore.
+                        return;
+                    }
+                } else if (message.session_id > it->session_id) {
+                    // New player.
+                    disconnect_player(it);
+                    is_new_player = true;
+                    break;
+                } else {
+                    // Ignore
+                    return;
                 }
             }
-            break; // at most one player will match
         }
+
+        player_no++;
     }
 
     if (is_new_player) {
+        for (auto it = players.begin(); it != players.end(); it++) {
+            if (!it->name.empty() && strncmp(message.player_name, it->name.c_str(), it->name.size()) == 0) {
+                // Same name as other player - ignore.
+                return;
+            }
+        }
         Player player;
         player.name = message.player_name;
+        player.session_id = message.session_id;
         if (is_game_active || player.name.empty()) {
             player.status = OBSERVER;
             num_of_players_with_status[OBSERVER]++;
@@ -331,6 +378,9 @@ Server::react_to_message_from_client(MessageFromClient message, struct sockaddr 
 
         player.address = *(sockaddr_in6*)client_address;
         player.addrlen = addrlen;
+        if (message.turn_direction > LEFT) { // Incorrect turn_direction - ignore.
+            return;
+        }
         player.turn_direction = message.turn_direction;
 
         player.poll_arr_index = add_timer_to_poll(PLAYER_TIMEOUT_MILLISECONDS);
@@ -529,7 +579,6 @@ void Server::game_over() {
 }
 
 void Server::new_game() {
-    //printf("new_game\n");
     is_game_active = true;
     for (uint i = 0; i < width * height; ++i) {
         game_board[i] = NOT_EATEN;
@@ -575,7 +624,7 @@ void Server::new_game() {
             }
         } else {
             // player ate pixel
-            eat_pixel(std::distance(players.begin(), it), pixel_x, pixel_y); // todo not efficient!
+            eat_pixel(std::distance(players.begin(), it), pixel_x, pixel_y);
         }
 
     }
@@ -592,6 +641,18 @@ void Server::change_status(std::vector<Player>::iterator it, uint new_status) {
     num_of_players_with_status[it->status]--;
     it->status = new_status;
     num_of_players_with_status[it->status]++;
+}
+
+void Server::disconnect_player(std::vector<Player>::iterator it) {
+    if (it->status == PLAYING) {
+        // change to ZOMBIE
+        change_status(it, ZOMBIE);
+    } else {
+        change_status(it, DISCONNECTED);
+        if (!is_game_active) {
+            delete_player(it);
+        }
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -667,7 +728,7 @@ int main(int argc, char *argv[]) {
 TODO:
  [*] keep players sorted alphabetically
  [*] IPv6
- [ ] recognition by socket, not name
+ [*] recognition by socket, not name
  [*] disconnecting does not ruin everything
  [ ] errors handling
  **/

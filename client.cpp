@@ -379,6 +379,7 @@ void Client::interpret_message_from_server(uint message_len) {
             } else if (event_type == GAME_OVER_TYPE) {
                 next_expected_event_no = 0;
             } else {
+                // Ignore message.
                 buffer_ += len - sizeof (uint32_t) - sizeof (uint8_t);
             }
 
@@ -415,7 +416,7 @@ int main(int argc, char *argv[]){
                         error("Player name too long.", CRITICAL);
                     }
                     for (uint i = 0; i < player_name.size(); ++i) {
-                        if (player_name[i] < 33 || player_name[i] > 126) {
+                        if (player_name[i] < MIN_PLAYER_NAME_CHAR || player_name[i] > MAX_PLAYER_NAME_CHAR) {
                             error("Incorrect character in player name.", CRITICAL);
                         }
                             //todo constants
@@ -444,8 +445,12 @@ int main(int argc, char *argv[]){
         error("Incorrect arguments.", CRITICAL);
     }
 
-    if (argc - optind != 1) {
-        error("Unexpected arguments.", CRITICAL);
+    if (argc - optind < 1) {
+        error("Too few arguments.", CRITICAL);
+    }
+
+    if (argc - optind > 1) {
+        error("Too many arguments.", CRITICAL);
     }
 
     Client client(game_server, player_name, port_number, gui_server, gui_port_number);
