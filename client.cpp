@@ -213,7 +213,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
                         interpret_message_from_gui_server(bytes_received);
 
                     } else if (i == timer_poll_ind) {
-                        read(poll_arr[timer_poll_ind].fd, buffer, BUFFER_SIZE);
+                        rc = read(poll_arr[timer_poll_ind].fd, buffer, BUFFER_SIZE);
                         uint len = prepare_message_to_server(buffer);
                         rc = send(server_socket, buffer, len, 0);
 

@@ -261,7 +261,7 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
                         }
                     } else if (i == round_timer_poll_ind) {
                         // new round to be played
-                        read(poll_arr[i].fd, buffer, BUFFER_SIZE);
+                        rc = read(poll_arr[i].fd, buffer, BUFFER_SIZE);
 
                         if (is_game_active) {
                             play_round();
@@ -270,7 +270,7 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
                         }
                     } else {
                         // player timeout
-                        read(poll_arr[i].fd, buffer, BUFFER_SIZE);
+                        rc = read(poll_arr[i].fd, buffer, BUFFER_SIZE);
                         for (auto it = players.begin(); it != players.end(); ++it) {
                             if (it->poll_arr_index == i) {
                                 disconnect_player(it);
