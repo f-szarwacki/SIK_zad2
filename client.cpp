@@ -455,12 +455,13 @@ void sig_pipe_handler([[maybe_unused]] int signum) {
 }
 
 int main(int argc, char *argv[]){
+    // Handling SIGPIPE signal when TCP connection is broken.
     struct sigaction pipe_action;
     pipe_action.sa_handler = sig_pipe_handler;
     sigemptyset(&pipe_action.sa_mask);
     sigaddset(&pipe_action.sa_mask, SIGPIPE);
     pipe_action.sa_flags = 0;
-    sigaction(SIGINT,&pipe_action,NULL);
+    sigaction(SIGINT,&pipe_action, nullptr);
 
     // Default arguments.
     std::string game_server;
