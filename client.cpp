@@ -31,7 +31,9 @@ uint send_to_socket(int socket, char *buffer, uint buffer_size, int flags) {
     while ((rc = send(socket, buffer + bytes_sent, buffer_size - bytes_sent, flags)) > 0) {
         bytes_sent += rc;
     }
-    if (rc == -1) return -1;
+    if (rc == -1) {
+        error("Sending to socket.", NONCRITICAL);
+    }
     buffer[buffer_size] = 0;
     return bytes_sent;
 }
@@ -47,6 +49,7 @@ class Client {
     uint8_t turn_direction;
     uint32_t next_expected_event_no;
     uint32_t current_game_id;
+    uint32_t maxx, maxy;
 
     bool left_key_down, right_key_down;
 
@@ -82,7 +85,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
 
     struct timeval tv;
     gettimeofday(&tv, nullptr);
-    session_id = tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
+    session_id = tv.tv_sec*(uint64_t) NANOSECONDS_IN_MILLISECOND + tv.tv_usec;
 
     for (int i = 0; i < POLL_ARR_LEN_CLIENT; ++i) {
         poll_arr[i].fd = -1;
@@ -113,6 +116,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
         error(gai_strerror(rc), CRITICAL);
     }
 
+    // Resolves address and tries possible addresses until one connects or all fail.
     struct addrinfo *it = addr_result;
     do {
         server_socket = socket(it->ai_family, SOCK_DGRAM, 0);
@@ -146,6 +150,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     addr_hints.ai_socktype = SOCK_STREAM;
     addr_hints.ai_protocol = 0;
 
+    // Resolves address and tries possible addresses until one connects or all fail.
     rc = getaddrinfo(gui_server.c_str(), gui_server_port.c_str(), &addr_hints, &addr_result);
     if (rc != 0) {
         error("Resolving address.", CRITICAL);
@@ -170,6 +175,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
         error("Connecting to GUI server.", CRITICAL);
     }
 
+    // Disable Nagle's algorithm.
     int yes = 1;
     rc = setsockopt(gui_server_socket,IPPROTO_TCP, TCP_NODELAY, (char *) &yes, sizeof(int));
     if (rc < 0) {
@@ -198,21 +204,23 @@ Client::Client(std::string game_server, std::string player_name, std::string por
             for (uint i = 0; i < POLL_ARR_LEN_CLIENT; ++i) {
                 if (poll_arr[i].revents != 0) {
                     if (i == server_socket_poll_ind) {
-                        rc = recv(server_socket, buffer, BUFFER_SIZE, 0);
-                        if (rc < 0) {
-                            error("Receiving from server.", NONCRITICAL);
-                        } else {
+                        // Message from game server.
+                        while ((rc = recv(server_socket, buffer, BUFFER_SIZE, 0)) > 0) {
                             interpret_message_from_server(rc);
                         }
+                        if (rc < 0 && !(errno == EAGAIN || errno == EWOULDBLOCK)) {
+                            error("Receiving from server.", NONCRITICAL);
+                        }
                     } else if (i == gui_server_socket_poll_ind) {
+                        // Message from GUI server.
                         uint bytes_received = 0;
                         while ((rc = recv(gui_server_socket, gui_buffer + bytes_received, BUFFER_SIZE - bytes_received,
                                           0)) > 0) {
                             bytes_received += rc;
                         }
                         interpret_message_from_gui_server(bytes_received);
-
                     } else if (i == timer_poll_ind) {
+                        // New message to server should be sent.
                         rc = read(poll_arr[timer_poll_ind].fd, buffer, BUFFER_SIZE);
                         uint len = prepare_message_to_server(buffer);
                         rc = send(server_socket, buffer, len, 0);
@@ -227,6 +235,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     }
 }
 
+// Makes a timer and adds its file descriptor to poll_arr.
 int Client::add_timer_to_poll(uint milliseconds) {
     int ind = 1;
     while (poll_arr[++ind].fd >= 0);
@@ -250,6 +259,7 @@ int Client::add_to_poll(int fd, int events) {
     return ind;
 }
 
+// Put data about client to buffer.
 uint Client::prepare_message_to_server(char *buffer) {
     *reinterpret_cast<uint64_t*> (buffer) = htobe64(session_id);
     buffer += sizeof (uint64_t);
@@ -268,6 +278,7 @@ uint Client::prepare_message_to_server(char *buffer) {
     return (sizeof (uint64_t) + sizeof (uint8_t) + sizeof (uint32_t) + player_name.size());
 }
 
+// Parses, interprets and reacts to messages from GUI server.
 void Client::interpret_message_from_gui_server(uint len) {
     // Assumes message is in gui_buffer.
     uint bytes_read = 0;
@@ -311,6 +322,7 @@ void Client::interpret_message_from_gui_server(uint len) {
     }
 }
 
+// Parses, interprets and reacts to messages from game server.
 void Client::interpret_message_from_server(uint message_len) {
     // Assumes message is in buffer.
     char *buffer_ = buffer;
@@ -330,6 +342,8 @@ void Client::interpret_message_from_server(uint message_len) {
             uint32_t event_no = ntohl(*reinterpret_cast<uint32_t *>(buffer_));
             buffer_ += sizeof(uint32_t);
 
+            // Check if we got event we wanted, if yes we want the next one, else we ignore this message and wait
+            // for correct one.
             if (event_no == next_expected_event_no) {
                 next_expected_event_no++;
             } else {
@@ -340,7 +354,7 @@ void Client::interpret_message_from_server(uint message_len) {
             buffer_ += sizeof(uint8_t);
 
             if (game_id != current_game_id && event_type != NEW_GAME_TYPE) {
-                // ignore message
+                // Ignore messages with different game_id than current unless it is a NEW_GAME event.
                 break;
             }
 
@@ -349,15 +363,24 @@ void Client::interpret_message_from_server(uint message_len) {
                 player_names.clear();
                 current_game_id = game_id;
 
-                uint32_t maxx = ntohl(*reinterpret_cast<uint32_t *>(buffer_));
+                maxx = ntohl(*reinterpret_cast<uint32_t *>(buffer_));
                 buffer_ += sizeof(uint32_t);
 
-                uint32_t maxy = ntohl(*reinterpret_cast<uint32_t *>(buffer_));
+                maxy = ntohl(*reinterpret_cast<uint32_t *>(buffer_));
                 buffer_ += sizeof(uint32_t);
 
                 uint player_names_bytes_read = 0;
                 do {
                     uint player_name_len = strlen(buffer_) + 1;
+                    for (int i = 0; i < MAX_PLAYER_NAME_LEN; ++i) {
+                        if (buffer_[i] == 0) {
+                            break;
+                        }
+                        if (buffer_[i] < MIN_PLAYER_NAME_CHAR || buffer_[i] > MAX_PLAYER_NAME_CHAR) {
+                            // Incorrect name - error.
+                            error("Incorrect player name received from game server.", CRITICAL);
+                        }
+                    }
                     player_names_bytes_read += player_name_len;
                     player_names.emplace_back(buffer_);
                     buffer_ += player_name_len;
@@ -376,14 +399,22 @@ void Client::interpret_message_from_server(uint message_len) {
                 buffer_ += sizeof(uint8_t);
 
                 if (player_no >= player_names.size()) {
-                    error("Incorrect player number.", CRITICAL);
+                    error("Incorrect player number received from game server.", CRITICAL);
                 }
 
                 uint32_t x = ntohl(*reinterpret_cast<uint32_t *>(buffer_));
                 buffer_ += sizeof(uint32_t);
 
+                if (x >= maxx) {
+                    error("Incorrect x-coordinate received from game server.", CRITICAL);
+                }
+
                 uint32_t y = ntohl(*reinterpret_cast<uint32_t *>(buffer_));
                 buffer_ += sizeof(uint32_t);
+
+                if (y >= maxy) {
+                    error("Incorrect y-coordinate received from game server.", CRITICAL);
+                }
 
                 bytes_written_to_gui_buffer += sprintf(gui_buffer, "PIXEL %u %u %s\n", x, y, get_player_name(player_no).c_str());
                 send_to_socket(gui_server_socket, gui_buffer, bytes_written_to_gui_buffer, 0);
@@ -416,6 +447,7 @@ std::string Client::get_player_name(uint player_no) {
 }
 
 int main(int argc, char *argv[]){
+    // Default arguments.
     std::string game_server;
     std::string player_name;
     std::string port_number = "2021";
@@ -433,6 +465,7 @@ int main(int argc, char *argv[]){
         while ((c = getopt(argc, argv, "n:p:i:r:")) != -1)
             switch (c) {
                 case 'n':
+                    // Option -n without argument is treated as empty player_name.
                     if (optarg != nullptr) {
                         player_name = std::string(optarg);
                     }
@@ -461,6 +494,7 @@ int main(int argc, char *argv[]){
                     }
                     break;
                 case '?':
+                    // Option -n without argument is treated as empty player_name.
                     if (optopt != 'n') {
                         error("Expected option argument.", CRITICAL);
                     }

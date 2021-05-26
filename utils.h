@@ -70,18 +70,19 @@ struct Player {
 };
 
 void error(const std::string& log, bool critical) {
-    std::cerr << log << "\n";
+    std::cerr << "Error: " << log << "\n";
     if (critical) {
         exit(EXIT_FAILURE);
     }
 }
 
+// as in: https://web.mit.edu/freebsd/head/sys/libkern/crc32.c
 uint32_t crc32(uint8_t *data, uint len_of_data) {
     uint32_t crc = 0xFFFFFFFF;
-    uint32_t lookup_ind = 0;
+    uint32_t lookup_ind;
     for (uint i = 0; i < len_of_data; ++i) {
         lookup_ind = (crc ^ data[i]) & 0xFF;
-        crc = (crc >> 8) ^ crc_table[lookup_ind];
+        crc = (crc >> 8) ^ crc32_table[lookup_ind];
     }
     crc = crc ^ 0xFFFFFFFF;
     return crc;

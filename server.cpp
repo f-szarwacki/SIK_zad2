@@ -15,6 +15,7 @@
 
 #include "utils.h"
 
+// Compares two sockets - their addresses and ports.
 bool check_if_sockets_equal(struct sockaddr *addr1, socklen_t addrlen1, struct sockaddr *addr2, socklen_t addrlen2) {
     if (addrlen1 == addrlen2 && addr1->sa_family == addr2->sa_family) {
         if (addr1->sa_family == AF_INET && memcmp(&(((struct sockaddr_in*)addr1)->sin_addr),
@@ -48,6 +49,7 @@ struct MessageFromClient {
     char player_name[MAX_PLAYER_NAME_LEN + 1];
 };
 
+// Parses message from buffer to structure MessageFromClient
 MessageFromClient parse_message_from_client(char *buffer, uint len) {
     MessageFromClient return_value{};
     return_value.session_id = be64toh(*((uint64_t*) buffer));
@@ -58,7 +60,6 @@ MessageFromClient parse_message_from_client(char *buffer, uint len) {
     buffer += sizeof(uint32_t);
     strncpy(return_value.player_name, (char*) buffer, len - (sizeof(uint64_t) + sizeof(uint8_t) + sizeof(uint32_t)));
     return_value.player_name[len - (sizeof(uint64_t) + sizeof(uint8_t) + sizeof(uint32_t))] = 0;
-    //printf("turn: %u; event_no: %u; name: %s;\n", return_value.turn_direction, return_value.next_expected_event_no, return_value.player_name);
     return return_value;
 }
 
@@ -124,7 +125,7 @@ class Server {
     uint32_t height;
     uint32_t maxx;
     uint32_t maxy;
-    int ear;
+    int sock;
     uint32_t next_rand;
     uint32_t game_id;
     pixel *game_board;
@@ -160,6 +161,7 @@ public:
     [[noreturn]] void run();
 };
 
+// Makes a timer and adds its file descriptor to poll_arr.
 int Server::add_timer_to_poll(uint milliseconds) {
     int ind = 1;
     while (poll_arr[++ind].fd >= 0);
@@ -212,8 +214,8 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
 [[noreturn]] void Server::run() {
     int rc;
     // making a socket
-    ear = socket(AF_INET6, SOCK_DGRAM, 0);
-    if (ear == -1) {
+    sock = socket(AF_INET6, SOCK_DGRAM, 0);
+    if (sock == -1) {
         error("Making socket.", CRITICAL);
     }
 
@@ -223,18 +225,19 @@ Server::Server(uint16_t port_number, uint32_t seed, uint32_t turning_speed, uint
     server.sin6_family = AF_INET6;
     server.sin6_addr = in6addr_any;
     server.sin6_port = htobe16(port_number);     // using port number given as parameter
-    rc = bind(ear, (struct sockaddr *)&server, sizeof(server));
+    rc = bind(sock, (struct sockaddr *)&server, sizeof(server));
     if (rc == -1) {
         error("Error opening socket.", CRITICAL);
     }
-    if(fcntl(ear, F_SETFL, fcntl(ear, F_GETFL) | O_NONBLOCK) < 0) {
+    if(fcntl(sock, F_SETFL, fcntl(sock, F_GETFL) | O_NONBLOCK) < 0) {
         error("Setting up socket.", CRITICAL);
     }
 
+    // Make sure that socket will handle IPv4 messages as well.
     int v = 0;
-    setsockopt(ear, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
+    setsockopt(sock, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
 
-    socket_poll_ind = add_to_poll(ear);
+    socket_poll_ind = add_to_poll(sock);
 
     while(true) {
         for (int i = 0; i < POLL_ARR_LEN; ++i) {
@@ -302,6 +305,8 @@ void Server::set_board(uint32_t x, uint32_t y, bool value) {
     }
 }
 
+// Checks whether player is a new or existing player, correctness of their message and if it is correct it either adds
+// a player or alters existing player turn_direction. At the end it sends a suitable response.
 void Server::react_to_message_from_client(MessageFromClient message, struct sockaddr *client_address, socklen_t addrlen) {
     for (int i = 0; i < MAX_PLAYER_NAME_LEN; ++i) {
         if (message.player_name[i] == 0) {
@@ -356,6 +361,10 @@ void Server::react_to_message_from_client(MessageFromClient message, struct sock
     }
 
     if (is_new_player) {
+        if (players.size() - num_of_players_with_status[DISCONNECTED] - num_of_players_with_status[ZOMBIE] >= MAX_NUM_OF_PLAYERS) {
+            // Too many players - ignore
+            return;
+        }
         for (auto it = players.begin(); it != players.end(); it++) {
             if (!it->name.empty() && strncmp(message.player_name, it->name.c_str(), it->name.size()) == 0) {
                 // Same name as other player - ignore.
@@ -401,6 +410,7 @@ int Server::add_to_poll(int fd, int events) {
     return ind;
 }
 
+// Plays a single round.
 void Server::play_round() {
     for (auto it = players.begin(); it != players.end(); ++it) {
         if (it->status == PLAYING || it->status == ZOMBIE) {
@@ -443,6 +453,8 @@ void Server::play_round() {
     }
 }
 
+// Gets events from given number to the end from events table, puts them into buffer and sends to player given or ALL
+// players.
 void Server::send_events(uint event_no, uint to_whom) {
     int rc = 0;
     while (event_no < events.size()) { // if event_no is equal to events.size() nothing is sent
@@ -457,7 +469,7 @@ void Server::send_events(uint event_no, uint to_whom) {
         if (to_whom == ALL) {
             for (auto player : players) {
                 if (!(player.status == DISCONNECTED || player.status == ZOMBIE)) {
-                    rc = sendto(ear, buffer, total_events_size_in_batch, 0, (struct sockaddr*) &player.address, player.addrlen);
+                    rc = sendto(sock, buffer, total_events_size_in_batch, 0, (struct sockaddr*) &player.address, player.addrlen);
                     if (rc < 0) {
                         error(strerror(errno), NONCRITICAL);
                     }
@@ -466,11 +478,10 @@ void Server::send_events(uint event_no, uint to_whom) {
         } else {
             auto player = players[to_whom];
             if (!(player.status == DISCONNECTED || player.status == ZOMBIE)) {
-                rc = sendto(ear, buffer, total_events_size_in_batch, 0, (struct sockaddr*) &player.address, player.addrlen);
+                rc = sendto(sock, buffer, total_events_size_in_batch, 0, (struct sockaddr*) &player.address, player.addrlen);
                 if (rc < 0) {
                     error(strerror(errno), NONCRITICAL);
                 }
-
             }
         }
 
@@ -481,6 +492,7 @@ void Server::send_events(uint event_no, uint to_whom) {
     }
 }
 
+// Copies information from Event object to buffer.
 char *Server::put_event_to_buffer(const std::shared_ptr<Event>& event_ptr, char *buffer_offset) {
     uint8_t *buffer_start = reinterpret_cast<uint8_t*>(buffer_offset);
     *reinterpret_cast<uint32_t*> (buffer_offset) = htobe32(event_ptr->len);
@@ -541,6 +553,7 @@ char *Server::put_event_to_buffer(const std::shared_ptr<Event>& event_ptr, char 
     return buffer_offset;
 }
 
+// Eliminates player - changes its state and generates PlayerEliminatedEvent.
 void Server::eliminate_player(std::vector<Player>::iterator it) {
     if (it->status == PLAYING) {
         change_status(it, ELIMINATED);
@@ -551,11 +564,14 @@ void Server::eliminate_player(std::vector<Player>::iterator it) {
     events.push_back(std::make_shared<PlayerEliminatedEvent>(std::distance(players.begin(), it), events.size()));
 }
 
+// Changes state of pixel and generates PixelEvent.
 void Server::eat_pixel(uint8_t player_no, uint x, uint y) {
     set_board(x, y, EATEN);
     events.push_back(std::make_shared<PixelEvent>(player_no, x, y, events.size()));
 }
 
+// Finishes the game, removes disconnected players from memory, updates status of another clients
+// and generates GameOverEvent.
 void Server::game_over() {
     is_game_active = false;
     bool player_disconnected = false;
@@ -578,13 +594,15 @@ void Server::game_over() {
     events.push_back(std::make_shared<GameOverEvent>(events.size()));
 }
 
+// Clears the board, sorts players in alphabetical order, initialises players locations and directions and generates
+// Events (at least NewGameEvent).
 void Server::new_game() {
     is_game_active = true;
     for (uint i = 0; i < width * height; ++i) {
         game_board[i] = NOT_EATEN;
     }
 
-    // sort players by name
+    // Sort players by name.
     std::sort(players.begin(), players.end(), [](const Player& a, const Player& b) {
         if (a.name.empty()) {
             if (b.name.empty()) {
@@ -631,6 +649,7 @@ void Server::new_game() {
     }
 }
 
+// Deletes player from memory.
 void Server::delete_player(std::vector<Player>::iterator it) {
     num_of_players_with_status[it->status]--;
     close(poll_arr[it->poll_arr_index].fd); // Timer fd closed.
@@ -644,6 +663,7 @@ void Server::change_status(std::vector<Player>::iterator it, uint new_status) {
     num_of_players_with_status[it->status]++;
 }
 
+// Changes status to either ZOMBIE or DISCONNECTED and, if possible, deletes player.
 void Server::disconnect_player(std::vector<Player>::iterator it) {
     if (it->status == PLAYING) {
         // change to ZOMBIE
@@ -657,6 +677,7 @@ void Server::disconnect_player(std::vector<Player>::iterator it) {
 }
 
 int main(int argc, char *argv[]) {
+    // Default values.
     uint32_t port_number = 2021, seed = time(nullptr), turning_speed = 6, rounds_per_sec = 50;
     uint32_t width = 640, height = 480;
 
@@ -723,15 +744,3 @@ int main(int argc, char *argv[]) {
 
     server.run();
 }
-
-
-/**
-TODO:
- [*] keep players sorted alphabetically
- [*] IPv6
- [*] recognition by socket, not name
- [*] disconnecting does not ruin everything
- [ ] errors handling
- **/
-
-//
