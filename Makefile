@@ -1,7 +1,7 @@
 .PHONY: all clean
 
 CC = g++
-CFLAGS = -std=c++17 -Wall -Wextra
+CFLAGS = -std=c++17 -Wall -Wextra -O2
 
 all: screen-worms-server screen-worms-client
 
