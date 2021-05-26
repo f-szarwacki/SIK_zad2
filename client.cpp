@@ -102,63 +102,78 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     struct addrinfo addr_hints, *addr_result;
 
     // UDP communication with game server
-    server_socket = socket(AF_INET6, SOCK_DGRAM, 0);
-    if (server_socket < 0) {
-        error("Making socket.", CRITICAL);
-    }
-
     memset(&addr_hints, 0, sizeof(struct addrinfo));
     addr_hints.ai_flags = 0;
     addr_hints.ai_family = AF_UNSPEC;
     addr_hints.ai_socktype = SOCK_DGRAM;
     addr_hints.ai_protocol = 0;
 
-    rc =  getaddrinfo(game_server.c_str(), server_port.c_str(), &addr_hints, &addr_result);
+    rc = getaddrinfo(game_server.c_str(), server_port.c_str(), &addr_hints, &addr_result);
     if (rc != 0) {
         error(gai_strerror(rc), CRITICAL);
+    }
+
+    struct addrinfo *it = addr_result;
+    do {
+        server_socket = socket(it->ai_family, SOCK_DGRAM, 0);
+        if (server_socket < 0) {
+            error("Making socket.", CRITICAL);
+        }
+        rc = connect(server_socket, addr_result->ai_addr, addr_result->ai_addrlen);
+        if (rc == 0) {
+            break;
+        }
+
+        close(server_socket);
+        it = it->ai_next;
+    } while (it != nullptr);
+
+    if (rc < 0) {
+        error("Connecting to game server.", CRITICAL);
     }
 
     if(fcntl(server_socket, F_SETFL, fcntl(server_socket, F_GETFL) | O_NONBLOCK) < 0) {
         error("Setting up socket.", CRITICAL);
     }
 
-    int v = 0;
-    setsockopt(server_socket, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
-
-    if (connect(server_socket, addr_result->ai_addr, addr_result->ai_addrlen) != 0) {
-        error("Connecting to game server.", CRITICAL);
-    }
     freeaddrinfo(addr_result);
     server_socket_poll_ind = add_to_poll(server_socket);
 
     // TCP connection with GUI server
-    gui_server_socket = socket(AF_INET6, SOCK_STREAM, 0);
-    if (gui_server_socket < 0) {
-        error("Making socket.", CRITICAL);
-    }
-
     memset(&addr_hints, 0, sizeof(struct addrinfo));
     addr_hints.ai_flags = 0;
-    addr_hints.ai_family = AF_INET6;
+    addr_hints.ai_family = AF_UNSPEC;
     addr_hints.ai_socktype = SOCK_STREAM;
     addr_hints.ai_protocol = 0;
 
-    rc =  getaddrinfo(gui_server.c_str(), gui_server_port.c_str(), &addr_hints, &addr_result);
+    rc = getaddrinfo(gui_server.c_str(), gui_server_port.c_str(), &addr_hints, &addr_result);
     if (rc != 0) {
         error("Resolving address.", CRITICAL);
+    }
+
+    it = addr_result;
+    do {
+        gui_server_socket = socket(it->ai_family, SOCK_STREAM, 0);
+        if (gui_server_socket < 0) {
+            error("Making socket.", CRITICAL);
+        }
+        rc = connect(gui_server_socket, addr_result->ai_addr, addr_result->ai_addrlen);
+        if (rc == 0) {
+            break;
+        }
+
+        close(gui_server_socket);
+        it = it->ai_next;
+    } while (it != nullptr);
+
+    if (rc < 0) {
+        error("Connecting to GUI server.", CRITICAL);
     }
 
     int yes = 1;
     rc = setsockopt(gui_server_socket,IPPROTO_TCP, TCP_NODELAY, (char *) &yes, sizeof(int));
     if (rc < 0) {
         error("Setting socket options.", CRITICAL);
-    }
-
-    v = 0;
-    setsockopt(gui_server_socket, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
-
-    if (connect(gui_server_socket, addr_result->ai_addr, addr_result->ai_addrlen) != 0) {
-        error("Connecting GUI server.", CRITICAL);
     }
 
     if(fcntl(gui_server_socket, F_SETFL, fcntl(gui_server_socket, F_GETFL) | O_NONBLOCK) < 0) {
