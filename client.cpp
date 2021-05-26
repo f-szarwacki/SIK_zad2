@@ -104,7 +104,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     // UDP communication with game server
     server_socket = socket(AF_INET6, SOCK_DGRAM, 0);
     if (server_socket < 0) {
-        error("Socket making.", CRITICAL);
+        error("Making socket.", CRITICAL);
     }
 
     memset(&addr_hints, 0, sizeof(struct addrinfo));
@@ -126,7 +126,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     setsockopt(server_socket, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
 
     if (connect(server_socket, addr_result->ai_addr, addr_result->ai_addrlen) != 0) {
-        error("Connect.", CRITICAL);
+        error("Connecting to game server.", CRITICAL);
     }
     freeaddrinfo(addr_result);
     server_socket_poll_ind = add_to_poll(server_socket);
@@ -134,7 +134,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     // TCP connection with GUI server
     gui_server_socket = socket(AF_INET6, SOCK_STREAM, 0);
     if (gui_server_socket < 0) {
-        error("Socket making.", CRITICAL);
+        error("Making socket.", CRITICAL);
     }
 
     memset(&addr_hints, 0, sizeof(struct addrinfo));
@@ -145,7 +145,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
 
     rc =  getaddrinfo(gui_server.c_str(), gui_server_port.c_str(), &addr_hints, &addr_result);
     if (rc != 0) {
-        error("Get address info.", CRITICAL);
+        error("Resolving address.", CRITICAL);
     }
 
     int yes = 1;
@@ -158,8 +158,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
     setsockopt(gui_server_socket, IPPROTO_IPV6, IPV6_V6ONLY, &v, sizeof(int));
 
     if (connect(gui_server_socket, addr_result->ai_addr, addr_result->ai_addrlen) != 0) {
-        perror("connect");
-        error("Connect.", CRITICAL);
+        error("Connecting GUI server.", CRITICAL);
     }
 
     if(fcntl(gui_server_socket, F_SETFL, fcntl(gui_server_socket, F_GETFL) | O_NONBLOCK) < 0) {
@@ -332,7 +331,6 @@ void Client::interpret_message_from_server(uint message_len) {
 
             uint bytes_written_to_gui_buffer = 0;
             if (event_type == NEW_GAME_TYPE) {
-                //printf("new game\n");
                 player_names.clear();
                 current_game_id = game_id;
 
@@ -362,6 +360,10 @@ void Client::interpret_message_from_server(uint message_len) {
                 uint8_t player_no = *reinterpret_cast<uint8_t *>(buffer_);
                 buffer_ += sizeof(uint8_t);
 
+                if (player_no >= player_names.size()) {
+                    error("Incorrect player number.", CRITICAL);
+                }
+
                 uint32_t x = ntohl(*reinterpret_cast<uint32_t *>(buffer_));
                 buffer_ += sizeof(uint32_t);
 
@@ -374,6 +376,11 @@ void Client::interpret_message_from_server(uint message_len) {
             } else if (event_type == PLAYER_ELIMINATED_TYPE) {
                 uint8_t player_no = *reinterpret_cast<uint8_t *>(buffer_);
                 buffer_ += sizeof(uint8_t);
+
+                if (player_no >= player_names.size()) {
+                    error("Incorrect player number.", CRITICAL);
+                }
+
                 bytes_written_to_gui_buffer += sprintf(gui_buffer, "PLAYER_ELIMINATED %s\n", get_player_name(player_no).c_str());
                 send_to_socket(gui_server_socket, gui_buffer, bytes_written_to_gui_buffer, 0);
             } else if (event_type == GAME_OVER_TYPE) {
@@ -395,7 +402,7 @@ std::string Client::get_player_name(uint player_no) {
 
 int main(int argc, char *argv[]){
     std::string game_server;
-    std::string player_name = "Zbycholud";
+    std::string player_name;
     std::string port_number = "2021";
     std::string gui_server = "localhost";
     std::string gui_port_number = "20211";
@@ -405,13 +412,15 @@ int main(int argc, char *argv[]){
     }
 
     game_server = std::string(argv[1]);
-
     int c;
+    opterr = 0;
     try {
         while ((c = getopt(argc, argv, "n:p:i:r:")) != -1)
             switch (c) {
                 case 'n':
-                    player_name = std::string(optarg);
+                    if (optarg != nullptr) {
+                        player_name = std::string(optarg);
+                    }
                     if (player_name.size() > MAX_PLAYER_NAME_LEN) {
                         error("Player name too long.", CRITICAL);
                     }
@@ -419,7 +428,6 @@ int main(int argc, char *argv[]){
                         if (player_name[i] < MIN_PLAYER_NAME_CHAR || player_name[i] > MAX_PLAYER_NAME_CHAR) {
                             error("Incorrect character in player name.", CRITICAL);
                         }
-                            //todo constants
                     }
                     break;
                 case 'p':
@@ -437,6 +445,11 @@ int main(int argc, char *argv[]){
                         error("Incorrect GUI port number.", CRITICAL);
                     }
                     break;
+                case '?':
+                    if (optopt != 'n') {
+                        error("Expected option argument.", CRITICAL);
+                    }
+                    break;
                 default:
                     error("Unexpected argument.", CRITICAL);
                     break;
@@ -447,10 +460,6 @@ int main(int argc, char *argv[]){
 
     if (argc - optind < 1) {
         error("Too few arguments.", CRITICAL);
-    }
-
-    if (argc - optind > 1) {
-        error("Too many arguments.", CRITICAL);
     }
 
     Client client(game_server, player_name, port_number, gui_server, gui_port_number);
