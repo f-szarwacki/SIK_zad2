@@ -609,24 +609,25 @@ void Server::new_game() {
         if (it->status == WILLING_TO_PLAY) {
             change_status(it, PLAYING);
         }
-        it->x = (rand() % maxx) + 0.5;
-        it->y = (rand() % maxy) + 0.5;
-        it->direction = rand() % 360;
+        if (it->status == PLAYING || it->status == ZOMBIE) {
+            it->x = (rand() % maxx) + 0.5;
+            it->y = (rand() % maxy) + 0.5;
+            it->direction = rand() % 360;
 
-        uint pixel_x = ceil(it->x);
-        uint pixel_y = ceil(it->y);
+            uint pixel_x = ceil(it->x);
+            uint pixel_y = ceil(it->y);
 
-        if (get_board(pixel_x, pixel_y) == EATEN) {
-            // got eliminated at start :((
-            eliminate_player(it);
-            if (num_of_players_with_status[PLAYING] + num_of_players_with_status[ZOMBIE] < 2) {
-                game_over();
+            if (get_board(pixel_x, pixel_y) == EATEN) {
+                // got eliminated at start :((
+                eliminate_player(it);
+                if (num_of_players_with_status[PLAYING] + num_of_players_with_status[ZOMBIE] < 2) {
+                    game_over();
+                }
+            } else {
+                // player ate pixel
+                eat_pixel(std::distance(players.begin(), it), pixel_x, pixel_y);
             }
-        } else {
-            // player ate pixel
-            eat_pixel(std::distance(players.begin(), it), pixel_x, pixel_y);
         }
-
     }
 }
 
