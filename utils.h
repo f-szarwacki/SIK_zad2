@@ -69,7 +69,7 @@ struct Player {
     uint64_t session_id;
 };
 
-void error(const std::string& log, bool critical) {
+inline void error(const std::string& log, bool critical) {
     std::cerr << "Error: " << log << "\n";
     if (critical) {
         exit(EXIT_FAILURE);

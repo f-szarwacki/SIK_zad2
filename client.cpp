@@ -14,6 +14,7 @@
 #include <netdb.h>
 #include <sys/time.h>
 #include <netinet/tcp.h>
+#include <csignal>
 
 #include "utils.h"
 
@@ -209,7 +210,7 @@ Client::Client(std::string game_server, std::string player_name, std::string por
                             interpret_message_from_server(rc);
                         }
                         if (rc < 0 && !(errno == EAGAIN || errno == EWOULDBLOCK)) {
-                            error("Receiving from server.", NONCRITICAL);
+                            error("Receiving from server.", CRITICAL);
                         }
                     } else if (i == gui_server_socket_poll_ind) {
                         // Message from GUI server.
@@ -217,6 +218,9 @@ Client::Client(std::string game_server, std::string player_name, std::string por
                         while ((rc = recv(gui_server_socket, gui_buffer + bytes_received, BUFFER_SIZE - bytes_received,
                                           0)) > 0) {
                             bytes_received += rc;
+                        }
+                        if (rc < 0 && !(errno == EAGAIN || errno == EWOULDBLOCK)) {
+                            error("Receiving from GUI server.", CRITICAL);
                         }
                         interpret_message_from_gui_server(bytes_received);
                     } else if (i == timer_poll_ind) {
@@ -446,7 +450,18 @@ std::string Client::get_player_name(uint player_no) {
     return player_names[player_no];
 }
 
+void sig_pipe_handler([[maybe_unused]] int signum) {
+    error("Connection with GUI server broken.", CRITICAL);
+}
+
 int main(int argc, char *argv[]){
+    struct sigaction pipe_action;
+    pipe_action.sa_handler = sig_pipe_handler;
+    sigemptyset(&pipe_action.sa_mask);
+    sigaddset(&pipe_action.sa_mask, SIGPIPE);
+    pipe_action.sa_flags = 0;
+    sigaction(SIGINT,&pipe_action,NULL);
+
     // Default arguments.
     std::string game_server;
     std::string player_name;
