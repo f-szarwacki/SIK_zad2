@@ -429,14 +429,14 @@ void Server::play_round() {
             }
 
             // move
-            int old_pixel_x = ceil(it->x);
-            int old_pixel_y = ceil(it->y);
+            int old_pixel_x = floor(it->x);
+            int old_pixel_y = floor(it->y);
 
             it->x += cos((double) it->direction * DEGREES_TO_RADIANS);
             it->y += sin((double) it->direction * DEGREES_TO_RADIANS);
 
-            int pixel_x = ceil(it->x);
-            int pixel_y = ceil(it->y);
+            int pixel_x = floor(it->x);
+            int pixel_y = floor(it->y);
 
             if (old_pixel_x == pixel_x && old_pixel_y == pixel_y) {
                 // worm didn't change its pixel
@@ -637,8 +637,8 @@ void Server::new_game() {
             it->y = (rand() % maxy) + 0.5;
             it->direction = rand() % 360;
 
-            uint pixel_x = ceil(it->x);
-            uint pixel_y = ceil(it->y);
+            uint pixel_x = floor(it->x);
+            uint pixel_y = floor(it->y);
 
             if (get_board(pixel_x, pixel_y) == EATEN) {
                 // got eliminated at start :((
