@@ -396,6 +396,11 @@ void Server::react_to_message_from_client(MessageFromClient message, struct sock
 
         players.push_back(player);
         player_no = players.size() - 1;
+
+        if (num_of_players_with_status[WILLING_TO_PLAY] >= 2 && num_of_players_with_status[WAITING] == 0) {
+            // new game can start
+            new_game();
+        }
     }
 
     send_events(message.next_expected_event_no, player_no);
